@@ -1,0 +1,55 @@
+# expense-tracker.service
+# systemd service file — runs the Expense Tracker app via Gunicorn
+#
+# INSTALLATION STEPS (on Ubuntu EC2):
+#   1. Copy this file:
+#      sudo cp systemd/expense-tracker.service /etc/systemd/system/
+#   2. Reload systemd:
+#      sudo systemctl daemon-reload
+#   3. Enable on boot:
+#      sudo systemctl enable expense-tracker
+#   4. Start now:
+#      sudo systemctl start expense-tracker
+#   5. Check status:
+#      sudo systemctl status expense-tracker
+#   6. View logs:
+#      sudo journalctl -u expense-tracker -f
+
+[Unit]
+Description=Expense Tracker Flask Application (Gunicorn)
+After=network.target
+
+[Service]
+# Run as this user (change 'ubuntu' to your EC2 username)
+User=ubuntu
+Group=www-data
+
+# Absolute path to your project directory
+WorkingDirectory=/home/ubuntu/expense-tracker
+
+# Load environment variables from .env file
+EnvironmentFile=/home/ubuntu/expense-tracker/.env
+
+# Gunicorn command:
+#   -w 4          → 4 worker processes (rule of thumb: 2 * CPU cores + 1)
+#   -b 0.0.0.0:5000 → bind to port 5000 on all interfaces
+#   app:app       → module 'app', Flask object named 'app'
+ExecStart=/home/ubuntu/expense-tracker/venv/bin/gunicorn \
+          --workers 4 \
+          --bind 0.0.0.0:5000 \
+          --timeout 120 \
+          --access-logfile /var/log/expense-tracker/access.log \
+          --error-logfile /var/log/expense-tracker/error.log \
+          app:app
+
+# Auto-restart if the process crashes
+Restart=always
+RestartSec=5
+
+# Redirect stdout/stderr to systemd journal
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=expense-tracker
+
+[Install]
+WantedBy=multi-user.target

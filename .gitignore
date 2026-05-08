@@ -1,0 +1,65 @@
+# ============================================================
+# .gitignore — Expense Tracker / AWS-FinStack
+# ============================================================
+
+# ── Environment & Secrets (NEVER commit these) ──────────────
+.env
+.env.*
+*.env
+!.env.example        # Allow a sample env file if you create one
+
+# ── Python Virtual Environment ───────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+
+# ── Python Cache & Compiled Files ────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.so
+.Python
+
+# ── Distribution / Build Artifacts ───────────────────────────
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# ── Pytest / Testing ─────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ── IDE & Editor Files ────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Logs ─────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── AWS & Credentials ────────────────────────────────────────
+*.pem
+*.key
+.aws/
+credentials
+
+# ── OS Files ─────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
