@@ -17,9 +17,10 @@ Responsibilities:
 
 import uuid
 import logging
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
 from collections import defaultdict
+import calendar
 
 from services.db_service import DynamoDBService
 
@@ -295,6 +296,13 @@ def get_summary(user_id: str = None) -> dict:
 
     current_month_total = monthly.get(current_month_key, 0.0)
 
+    # Days elapsed and remaining in the current month
+    today = date.today()
+    days_in_month = calendar.monthrange(today.year, today.month)[1]
+    days_elapsed = today.day  # 1-indexed: day 1 = 1 day elapsed
+    days_remaining = days_in_month - days_elapsed
+    daily_avg = round(current_month_total / days_elapsed, 2) if days_elapsed > 0 else 0.0
+
     summary = {
         "total": round(total, 2),
         "count": len(expenses),
@@ -302,7 +310,73 @@ def get_summary(user_id: str = None) -> dict:
         "monthly": {k: round(v, 2) for k, v in sorted(monthly.items(), reverse=True)},
         "current_month_total": round(current_month_total, 2),
         "current_month_name": current_month_name,
+        "days_elapsed": days_elapsed,
+        "days_remaining": days_remaining,
+        "days_in_month": days_in_month,
+        "daily_avg": daily_avg,
     }
 
     logger.info(f"Summary calculated: total={total:.2f}, count={len(expenses)}")
     return summary
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FORECAST
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_forecast(user_id: str = None) -> dict:
+    """
+    Project end-of-month spending using current daily burn rate.
+
+    Method:
+        daily_rate = current_month_spent / days_elapsed
+        forecast   = current_month_spent + daily_rate * days_remaining
+
+    Args:
+        user_id (str): Filter expenses to this user only.
+
+    Returns:
+        dict: {
+            "current_month_total": float,
+            "forecast_month_end": float,
+            "daily_avg": float,
+            "days_elapsed": int,
+            "days_remaining": int,
+            "days_in_month": int,
+            "current_month_name": str,
+            "confidence": str   # "low" | "medium" | "high"
+        }
+    """
+    summary = get_summary(user_id=user_id)
+
+    current_month_total = summary["current_month_total"]
+    daily_avg           = summary["daily_avg"]
+    days_elapsed        = summary["days_elapsed"]
+    days_remaining      = summary["days_remaining"]
+    days_in_month       = summary["days_in_month"]
+
+    forecast_month_end = round(current_month_total + daily_avg * days_remaining, 2)
+
+    # Confidence level: higher when more days have elapsed
+    if days_elapsed < 5:
+        confidence = "low"
+    elif days_elapsed < 15:
+        confidence = "medium"
+    else:
+        confidence = "high"
+
+    logger.info(
+        f"Forecast for user={user_id}: current={current_month_total:.2f}, "
+        f"forecast={forecast_month_end:.2f}, daily_avg={daily_avg:.2f}"
+    )
+
+    return {
+        "current_month_total": current_month_total,
+        "forecast_month_end": forecast_month_end,
+        "daily_avg": daily_avg,
+        "days_elapsed": days_elapsed,
+        "days_remaining": days_remaining,
+        "days_in_month": days_in_month,
+        "current_month_name": summary["current_month_name"],
+        "confidence": confidence,
+    }

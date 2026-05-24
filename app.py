@@ -340,6 +340,58 @@ def get_summary():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# ROUTE: FORECAST
+# GET /api/forecast
+# ─────────────────────────────────────────────────────────────────────────────
+@app.route("/api/forecast", methods=["GET"])
+@login_required
+def get_forecast():
+    """Project end-of-month spending for the current user."""
+    try:
+        user_id = current_user()
+        forecast = expense_service.get_forecast(user_id=user_id)
+        return success_response(forecast, "Forecast calculated successfully.")
+    except Exception as e:
+        logger.error(f"Error in get_forecast: {e}")
+        return error_response(f"Failed to calculate forecast: {str(e)}", 500)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ROUTE: MONTHLY BUDGET (Set / Get)
+# GET  /api/budget  — Return the user's current monthly budget
+# POST /api/budget  — Save the user's monthly budget
+# Budget is persisted in the server session (simple & stateless).
+# ─────────────────────────────────────────────────────────────────────────────
+@app.route("/api/budget", methods=["GET", "POST"])
+@login_required
+def manage_budget():
+    """Get or set the user's monthly spending budget."""
+    session_key = f"budget_{current_user()}"
+
+    if request.method == "GET":
+        budget = session.get(session_key, 0.0)
+        return success_response({"monthly_budget": float(budget)}, "Budget retrieved.")
+
+    # POST — save new budget
+    try:
+        data = request.get_json()
+        if not data or "monthly_budget" not in data:
+            return error_response("Missing 'monthly_budget' field.", 400)
+        value = float(data["monthly_budget"])
+        if value < 0:
+            return error_response("Budget cannot be negative.", 400)
+        session[session_key] = value
+        session.modified = True
+        logger.info(f"Budget set to {value:.2f} for user: {current_user()}")
+        return success_response({"monthly_budget": value}, "Budget saved successfully.")
+    except (ValueError, TypeError):
+        return error_response("Budget must be a valid number.", 400)
+    except Exception as e:
+        logger.error(f"Error saving budget: {e}")
+        return error_response(f"Failed to save budget: {str(e)}", 500)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # ROUTE: HEALTH CHECK
 # GET /api/health
 # Used by load balancers and uptime monitors to verify the app is running.

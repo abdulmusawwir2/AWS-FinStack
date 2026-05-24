@@ -1,14 +1,14 @@
 /**
- * script.js - Expense Tracker Frontend Logic
+ * script.js - Smart Spending Analytics System (SSAS)
  *
- * This file handles all client-side interactions:
- *  - Fetching expenses and summary from the Flask API
- *  - Rendering the expense table and dashboard cards
- *  - Add / Edit / Delete expense operations
- *  - Filtering by category and month
+ * Client-side logic:
+ *  - Fetching transactions and summary from Flask API
+ *  - Rendering transaction ledger and KPI cards
+ *  - Add / Edit / Delete transaction operations
+ *  - Filtering by category and period
  *  - Toast notifications and modal confirmations
  *
- * API Base URL: /api  (same origin as Flask server)
+ * API Base URL: /api
  */
 
 'use strict';
@@ -61,11 +61,35 @@ const categoryBars     = document.getElementById('category-bars');
 const monthlyList      = document.getElementById('monthly-list');
 const alertsContainer  = document.getElementById('alerts-container');
 
+// Budget card elements
+const cardBudget       = document.getElementById('card-budget');
+const cardBudgetMeta   = document.getElementById('card-budget-meta');
+const budgetSetRow     = document.getElementById('budget-set-row');
+const budgetBarWrap    = document.getElementById('budget-bar-wrap');
+const budgetBarFill    = document.getElementById('budget-bar-fill');
+const budgetBarSpent   = document.getElementById('budget-bar-spent');
+const budgetBarLimit   = document.getElementById('budget-bar-limit');
+
+// Forecast elements
+const cardForecast     = document.getElementById('card-forecast');
+const cardForecastMeta = document.getElementById('card-forecast-meta');
+const cardForecastBadge= document.getElementById('card-forecast-badge');
+const forecastDetail   = document.getElementById('forecast-detail');
+const forecastConfBadge= document.getElementById('forecast-confidence-badge');
+
+// Tracked budget value
+let currentBudget = 0;
+
 // ─── Initialization ───────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  // Show today's date in the navbar
+  // Show today's date in the topbar
   document.getElementById('current-date').textContent =
     new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+  // Set user avatar letter
+  const uname = document.getElementById('sidebar-username');
+  const avatar = document.getElementById('user-avatar-letter');
+  if (uname && avatar) avatar.textContent = (uname.textContent || 'U')[0].toUpperCase();
 
   // Default form date to today
   document.getElementById('expense-date').valueAsDate = new Date();
@@ -73,6 +97,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load data
   loadExpenses();
   loadSummary();
+  loadBudget();
+  loadForecast();
 
   // Form submit
   expenseForm.addEventListener('submit', handleFormSubmit);
@@ -85,6 +111,12 @@ document.addEventListener('DOMContentLoaded', () => {
   deleteConfirmBtn.addEventListener('click', confirmDelete);
   deleteCancelBtn.addEventListener('click', closeDeleteModal);
   deleteModal.addEventListener('click', (e) => { if (e.target === deleteModal) closeDeleteModal(); });
+
+  // Budget save button
+  document.getElementById('budget-save-btn').addEventListener('click', saveBudget);
+  document.getElementById('budget-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') saveBudget();
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -123,7 +155,7 @@ async function loadExpenses() {
     allExpenses = json.data || [];
     applyFilters();
   } catch (err) {
-    showToast(`Failed to load expenses: ${err.message}`, 'error');
+    showToast(`Failed to load transactions: ${err.message}`, 'error');
     expenseTbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">⚠️</div><p>${err.message}</p></div></td></tr>`;
   }
 }
@@ -139,8 +171,69 @@ async function loadSummary() {
     renderCategoryBars(s.by_category, s.total);
     renderMonthlyList(s.monthly);
     renderAlerts(s.alerts || []);
+    // Re-render budget bar with updated spend
+    renderBudgetCard(currentBudget, s.current_month_total || 0);
   } catch (err) {
     showToast(`Failed to load summary: ${err.message}`, 'error');
+  }
+}
+
+/**
+ * Fetch the user's saved monthly budget from the server.
+ */
+async function loadBudget() {
+  try {
+    const json = await apiFetch(`${API}/budget`);
+    currentBudget = json.data.monthly_budget || 0;
+    // We need the current month spend — get it from summary cache if available
+    const summaryJson = await apiFetch(`${API}/summary`);
+    const spent = summaryJson.data.current_month_total || 0;
+    renderBudgetCard(currentBudget, spent);
+  } catch (err) {
+    // Non-critical — just show the input
+    renderBudgetCard(0, 0);
+  }
+}
+
+/**
+ * Save the monthly budget entered by the user.
+ */
+async function saveBudget() {
+  const input = document.getElementById('budget-input');
+  const value = parseFloat(input.value);
+  if (isNaN(value) || value < 0) {
+    showToast('❌ Please enter a valid positive amount.', 'error');
+    return;
+  }
+  try {
+    await apiFetch(`${API}/budget`, {
+      method: 'POST',
+      body: JSON.stringify({ monthly_budget: value }),
+    });
+    currentBudget = value;
+    const summaryJson = await apiFetch(`${API}/summary`);
+    const spent = summaryJson.data.current_month_total || 0;
+    renderBudgetCard(currentBudget, spent);
+    // Also refresh forecast vs budget
+    loadForecast();
+    showToast(`✅ Monthly budget set to ₹${value.toFixed(2)}`, 'success');
+    input.value = '';
+  } catch (err) {
+    showToast(`❌ ${err.message}`, 'error');
+  }
+}
+
+/**
+ * Fetch spending forecast from the server.
+ */
+async function loadForecast() {
+  try {
+    const json = await apiFetch(`${API}/forecast`);
+    const f = json.data;
+    renderForecastCard(f);
+    renderForecastPanel(f);
+  } catch (err) {
+    if (cardForecast) cardForecast.textContent = 'N/A';
   }
 }
 
@@ -174,8 +267,8 @@ function renderTable(expenses) {
     expenseTbody.innerHTML = `
       <tr><td colspan="7">
         <div class="empty-state">
-          <div class="empty-icon">💸</div>
-          <p>No expenses found. Add your first expense!</p>
+          <div class="empty-icon">📊</div>
+          <p>No transactions yet. Log your first transaction!</p>
         </div>
       </td></tr>`;
     return;
@@ -203,8 +296,8 @@ function buildRow(e) {
   return `
     <tr data-id="${e.expense_id}">
       <td>
-        <div class="expense-title">${escHtml(e.title)}</div>
-        ${e.notes ? `<div class="expense-notes">${escHtml(e.notes)}</div>` : ''}
+        <div class="tx-title">${escHtml(e.title)}</div>
+        ${e.notes ? `<div class="tx-notes">${escHtml(e.notes)}</div>` : ''}
       </td>
       <td class="amount-cell">₹${Number(e.amount).toFixed(2)}</td>
       <td>
@@ -215,7 +308,7 @@ function buildRow(e) {
       <td>
         <div class="actions-cell">
           <button class="btn btn-sm btn-edit btn-edit-row" data-id="${e.expense_id}" title="Edit">✏️ Edit</button>
-          <button class="btn btn-sm btn-delete btn-delete-row" data-id="${e.expense_id}" title="Delete">🗑️ Delete</button>
+          <button class="btn btn-sm btn-delete btn-delete-row" data-id="${e.expense_id}" title="Remove">🗑️ Remove</button>
         </div>
       </td>
     </tr>`;
@@ -258,10 +351,120 @@ function renderDashboardCards(s) {
   cardMonthTotal.textContent = `₹${Number(s.current_month_total || 0).toFixed(2)}`;
   cardMonthName.textContent  = s.current_month_name || '';
 
-  // Trend badge
+  // Trend chip
   const t = s.trend || {};
   const trendClass = { up: 'trend-up', down: 'trend-down', stable: 'trend-stable' }[t.trend] || 'trend-stable';
-  cardTrend.innerHTML = `<span class="trend-badge ${trendClass}">${t.message || '—'}</span>`;
+  cardTrend.innerHTML = `<span class="trend-chip ${trendClass}">${t.message || '—'}</span>`;
+}
+
+/**
+ * Render the Monthly Budget KPI card with progress bar.
+ * @param {number} budget   - User's set monthly budget (0 = not set)
+ * @param {number} spent    - Amount spent this month
+ */
+function renderBudgetCard(budget, spent) {
+  if (!cardBudget) return;
+  if (!budget || budget <= 0) {
+    cardBudget.textContent = 'Not set';
+    cardBudgetMeta.textContent = 'Set your monthly limit';
+    budgetSetRow.style.display = 'flex';
+    budgetBarWrap.style.display = 'none';
+    return;
+  }
+
+  const pct = Math.min((spent / budget) * 100, 100);
+  const remaining = budget - spent;
+
+  cardBudget.textContent = `₹${Number(budget).toFixed(0)}/mo`;
+  cardBudgetMeta.textContent = remaining >= 0
+    ? `₹${Math.abs(remaining).toFixed(2)} remaining`
+    : `₹${Math.abs(remaining).toFixed(2)} over budget!`;
+
+  // Show progress bar
+  budgetSetRow.style.display = 'flex';
+  budgetBarWrap.style.display = 'block';
+  budgetBarFill.style.width = `${pct}%`;
+  budgetBarFill.className = 'budget-bar-fill';
+  if (pct >= 100) budgetBarFill.classList.add('danger');
+  else if (pct >= 80) budgetBarFill.classList.add('warn');
+
+  budgetBarSpent.textContent = `₹${spent.toFixed(2)} spent`;
+  budgetBarLimit.textContent = `of ₹${budget.toFixed(0)}`;
+}
+
+/**
+ * Update the Month-End Forecast KPI card (small card at top).
+ * @param {object} f - Forecast object from API
+ */
+function renderForecastCard(f) {
+  if (!cardForecast) return;
+  const forecast = f.forecast_month_end || 0;
+  const daily    = f.daily_avg || 0;
+
+  cardForecast.textContent = forecast > 0 ? `₹${forecast.toFixed(2)}` : '₹0.00';
+  cardForecastMeta.textContent = `₹${daily.toFixed(2)}/day avg · ${f.days_remaining} days left`;
+
+  // Compare to budget if set
+  if (currentBudget > 0) {
+    const over = forecast > currentBudget;
+    cardForecastBadge.innerHTML = over
+      ? `<span class="trend-chip trend-up">⚠️ May exceed budget by ₹${(forecast - currentBudget).toFixed(2)}</span>`
+      : `<span class="trend-chip trend-down">✅ Within budget (₹${(currentBudget - forecast).toFixed(2)} margin)</span>`;
+  } else {
+    cardForecastBadge.innerHTML = '';
+  }
+}
+
+/**
+ * Render the full Spending Forecast detail panel.
+ * @param {object} f - Forecast object from API
+ */
+function renderForecastPanel(f) {
+  if (!forecastDetail) return;
+
+  // Confidence badge
+  if (forecastConfBadge) {
+    const confMap = { low: '🟡 Low Confidence', medium: '🔵 Medium Confidence', high: '🟢 High Confidence' };
+    const confClass = { low: 'confidence-low', medium: 'confidence-medium', high: 'confidence-high' };
+    forecastConfBadge.textContent = confMap[f.confidence] || '';
+    forecastConfBadge.className = `forecast-confidence-badge ${confClass[f.confidence] || ''}`;
+  }
+
+  const budgetRow = currentBudget > 0
+    ? `<div class="forecast-stat">
+        <div class="forecast-stat-label">Budget vs Forecast</div>
+        <div class="forecast-stat-value ${f.forecast_month_end > currentBudget ? 'danger' : 'accent'}">
+          ${f.forecast_month_end > currentBudget ? '⚠️ Over' : '✅ Under'}
+        </div>
+        <div class="forecast-stat-sub">₹${Math.abs(currentBudget - f.forecast_month_end).toFixed(2)} ${f.forecast_month_end > currentBudget ? 'over' : 'under'} your ₹${currentBudget.toFixed(0)} budget</div>
+      </div>`
+    : '';
+
+  forecastDetail.innerHTML = `
+    <div class="forecast-stat">
+      <div class="forecast-stat-label">Spent This Month</div>
+      <div class="forecast-stat-value accent">₹${(f.current_month_total || 0).toFixed(2)}</div>
+      <div class="forecast-stat-sub">${f.days_elapsed} of ${f.days_in_month} days elapsed</div>
+    </div>
+    <div class="forecast-stat">
+      <div class="forecast-stat-label">Daily Average</div>
+      <div class="forecast-stat-value">₹${(f.daily_avg || 0).toFixed(2)}</div>
+      <div class="forecast-stat-sub">per day so far</div>
+    </div>
+    <div class="forecast-stat">
+      <div class="forecast-stat-label">Days Remaining</div>
+      <div class="forecast-stat-value indigo">${f.days_remaining}</div>
+      <div class="forecast-stat-sub">out of ${f.days_in_month} in ${f.current_month_name}</div>
+    </div>
+    <div class="forecast-stat">
+      <div class="forecast-stat-label">Projected Month Total</div>
+      <div class="forecast-stat-value ${f.forecast_month_end > (currentBudget || Infinity) ? 'danger' : 'indigo'}">
+        ₹${(f.forecast_month_end || 0).toFixed(2)}
+      </div>
+      <div class="forecast-stat-sub">at current daily rate</div>
+    </div>
+    ${budgetRow}
+  `;
 }
 
 /**
@@ -353,16 +556,17 @@ async function handleFormSubmit(e) {
       method: 'POST',
       body: JSON.stringify(payload),
     });
-    showToast('✅ Expense added successfully!', 'success');
+    showToast('✅ Transaction logged successfully!', 'success');
     expenseForm.reset();
     document.getElementById('expense-date').valueAsDate = new Date();
     await loadExpenses();
     await loadSummary();
+    await loadForecast();
   } catch (err) {
     showToast(`❌ ${err.message}`, 'error');
   } finally {
     submitBtn.disabled = false;
-    submitBtn.innerHTML = '➕ Add Expense';
+    submitBtn.innerHTML = '＋ Log Transaction';
   }
 }
 
@@ -410,10 +614,11 @@ async function saveEdit() {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
-    showToast('✅ Expense updated!', 'success');
+    showToast('✅ Transaction updated!', 'success');
     editingId = null;
     await loadExpenses();
     await loadSummary();
+    await loadForecast();
   } catch (err) {
     showToast(`❌ ${err.message}`, 'error');
     saveBtn.disabled = false;
@@ -449,10 +654,11 @@ async function confirmDelete() {
 
   try {
     await apiFetch(`${API}/expenses/${deleteTargetId}`, { method: 'DELETE' });
-    showToast('🗑️ Expense deleted.', 'info');
+    showToast('🗑️ Transaction removed.', 'info');
     deleteTargetId = null;
     await loadExpenses();
     await loadSummary();
+    await loadForecast();
   } catch (err) {
     showToast(`❌ ${err.message}`, 'error');
   }
@@ -468,7 +674,7 @@ function showTableLoading() {
     <tr class="loading-row">
       <td colspan="7">
         <span class="spinner"></span>
-        &nbsp;&nbsp;Loading expenses...
+        &nbsp;&nbsp;Loading transactions...
       </td>
     </tr>`;
 }

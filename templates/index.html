@@ -3,267 +3,326 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Expense Tracker — Track, manage, and analyze your daily expenses with AWS DynamoDB." />
-  <title>Expense Tracker | Dashboard</title>
-  <!-- Stylesheet -->
+  <meta name="description" content="Smart Spending Analytics System — AI-powered personal finance tracking and insights." />
+  <title>SSAS | Dashboard</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
 <body>
 
-<!-- ──────────────────────────────────────────────────────────
-     APP WRAPPER
-────────────────────────────────────────────────────────────── -->
-<div class="app-wrapper">
-
-  <!-- ── NAVBAR ──────────────────────────────────────────────── -->
-  <nav class="navbar">
-    <div class="navbar-brand">
-      <div class="brand-icon">💰</div>
-      <span class="brand-name">ExpenseTracker</span>
+<!-- ── SIDEBAR ────────────────────────────────────────────── -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-mark">📊</div>
+    <div class="logo-text">
+      <div class="logo-name">SSAS</div>
+      <div class="logo-tagline">Smart Spending Analytics</div>
     </div>
-    <div class="navbar-meta">
-      <span id="current-date"></span>
-      <span class="nav-user">👤 {{ username }}</span>
-      <a href="/logout" class="btn-logout" id="logout-btn" title="Sign out">⎋ Logout</a>
+  </div>
+
+  <span class="nav-section-label">Main Menu</span>
+  <a href="#" class="nav-item active" id="nav-dashboard">
+    <span class="nav-icon">⚡</span> Dashboard
+  </a>
+  <a href="#" class="nav-item" id="nav-transactions">
+    <span class="nav-icon">💳</span> Transactions
+  </a>
+  <a href="#" class="nav-item" id="nav-analytics">
+    <span class="nav-icon">📈</span> Analytics
+  </a>
+
+  <span class="nav-section-label">System</span>
+  <a href="#" class="nav-item" id="nav-alerts">
+    <span class="nav-icon">🔔</span> Smart Alerts
+  </a>
+
+  <div class="sidebar-footer">
+    <div class="user-pill">
+      <div class="user-avatar" id="user-avatar-letter">U</div>
+      <div class="user-info">
+        <div class="user-name" id="sidebar-username">{{ username }}</div>
+        <div class="user-role">Premium Member</div>
+      </div>
     </div>
-  </nav>
+    <a href="/logout" class="btn-logout" id="logout-btn">⎋ Sign Out</a>
+  </div>
+</aside>
 
-  <!-- ── DASHBOARD CARDS ─────────────────────────────────────── -->
-  <section class="dashboard-cards" aria-label="Summary Cards">
+<!-- ── MAIN CONTENT ─────────────────────────────────────── -->
+<div class="main-content">
 
-    <!-- Total Spent -->
-    <div class="card">
-      <div class="card-icon purple">💸</div>
-      <div class="card-label">Total Spent</div>
-      <div class="card-value accent" id="card-total">₹0.00</div>
-      <div class="card-sub">All time</div>
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <h1>Smart Spending Analytics</h1>
+      <p>Track, analyze, and optimize your financial habits</p>
     </div>
-
-    <!-- Total Expenses -->
-    <div class="card">
-      <div class="card-icon blue">📋</div>
-      <div class="card-label">Total Expenses</div>
-      <div class="card-value" id="card-count">0</div>
-      <div class="card-sub">Transactions recorded</div>
+    <div class="topbar-right">
+      <span class="date-badge" id="current-date"></span>
     </div>
+  </div>
 
-    <!-- This Month -->
-    <div class="card">
-      <div class="card-icon green">📅</div>
-      <div class="card-label">This Month</div>
-      <div class="card-value success" id="card-month-total">₹0.00</div>
-      <div class="card-sub" id="card-month-name">—</div>
-    </div>
+  <!-- Page Body -->
+  <div class="page-body">
 
-    <!-- Spending Trend -->
-    <div class="card">
-      <div class="card-icon orange">📈</div>
-      <div class="card-label">Trend</div>
-      <div id="card-trend"><span class="trend-badge trend-stable">Loading…</span></div>
-      <div class="card-sub">vs. previous month</div>
-    </div>
+    <!-- ── KPI CARDS ─────────────────────────────────────── -->
+    <section class="kpi-grid" aria-label="KPI Summary">
 
-  </section><!-- /dashboard-cards -->
-
-  <!-- ── MAIN GRID: Form + Table ─────────────────────────────── -->
-  <div class="main-grid">
-
-    <!-- ── LEFT: Add Expense Form ───────────────────────────── -->
-    <aside>
-      <div class="panel">
-        <div class="panel-header">
-          <h2 class="panel-title">➕ Add Expense</h2>
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-label">Total Spent</span>
+          <div class="kpi-icon teal">💸</div>
         </div>
-        <div class="panel-body">
-          <form id="expense-form" novalidate>
-
-            <!-- Title -->
-            <div class="form-group">
-              <label for="expense-title">Title</label>
-              <input
-                type="text"
-                id="expense-title"
-                class="form-control"
-                placeholder="e.g. Lunch at café"
-                required
-                maxlength="100"
-              />
-            </div>
-
-            <!-- Amount + Category (side by side) -->
-            <div class="form-row">
-              <div class="form-group">
-                <label for="expense-amount">Amount (₹)</label>
-                <input
-                  type="number"
-                  id="expense-amount"
-                  class="form-control"
-                  placeholder="0.00"
-                  step="0.01"
-                  min="0.01"
-                  required
-                />
-              </div>
-              <div class="form-group">
-                <label for="expense-date">Date</label>
-                <input
-                  type="date"
-                  id="expense-date"
-                  class="form-control"
-                  required
-                />
-              </div>
-            </div>
-
-            <!-- Category -->
-            <div class="form-group">
-              <label for="expense-category">Category</label>
-              <select id="expense-category" class="form-control" required>
-                {% for category in categories %}
-                <option value="{{ category }}">{{ category }}</option>
-                {% endfor %}
-              </select>
-            </div>
-
-            <!-- Notes (optional) -->
-            <div class="form-group">
-              <label for="expense-notes">Notes <span style="font-weight:400;text-transform:none;color:var(--text-muted)">(optional)</span></label>
-              <input
-                type="text"
-                id="expense-notes"
-                class="form-control"
-                placeholder="Any extra details..."
-                maxlength="200"
-              />
-            </div>
-
-            <button type="submit" class="btn btn-primary" id="submit-btn">
-              ➕ Add Expense
-            </button>
-
-          </form>
-        </div>
+        <div class="kpi-value teal" id="card-total">₹0.00</div>
+        <div class="kpi-meta">All-time expenditure</div>
       </div>
 
-      <!-- ── Budget Alerts ──────────────────────────────────── -->
-      <div class="panel" style="margin-top:24px;">
-        <div class="panel-header">
-          <h3 class="panel-title">🔔 Budget Alerts</h3>
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-label">Transactions</span>
+          <div class="kpi-icon blue">📋</div>
         </div>
-        <div class="panel-body">
-          <div id="alerts-container">
-            <p style="color:var(--text-muted);font-size:.82rem;">Loading alerts…</p>
+        <div class="kpi-value blue" id="card-count">0</div>
+        <div class="kpi-meta">Total records logged</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-label">This Month</span>
+          <div class="kpi-icon purple">📅</div>
+        </div>
+        <div class="kpi-value purple" id="card-month-total">₹0.00</div>
+        <div class="kpi-meta" id="card-month-name">—</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-label">Spending Trend</span>
+          <div class="kpi-icon amber">📊</div>
+        </div>
+        <div id="card-trend"><span class="trend-chip trend-stable">Analyzing…</span></div>
+        <div class="kpi-meta">vs. previous month</div>
+      </div>
+
+      <div class="kpi-card kpi-card-budget">
+        <div class="kpi-header">
+          <span class="kpi-label">Monthly Budget</span>
+          <div class="kpi-icon rose">🎯</div>
+        </div>
+        <div class="kpi-value rose" id="card-budget">Not set</div>
+        <div class="kpi-meta" id="card-budget-meta">Set your monthly limit</div>
+        <div class="budget-set-row" id="budget-set-row">
+          <input type="number" id="budget-input" class="form-control budget-input"
+                 placeholder="Enter amount" min="0" step="100" />
+          <button class="btn btn-budget-save" id="budget-save-btn">Set</button>
+        </div>
+        <!-- Progress bar shown once budget is set -->
+        <div class="budget-bar-wrap" id="budget-bar-wrap" style="display:none;">
+          <div class="budget-bar-track">
+            <div class="budget-bar-fill" id="budget-bar-fill"></div>
+          </div>
+          <div class="budget-bar-labels">
+            <span id="budget-bar-spent">₹0</span>
+            <span id="budget-bar-limit">of ₹0</span>
           </div>
         </div>
       </div>
 
-    </aside><!-- /left aside -->
-
-    <!-- ── RIGHT: Expenses Table ─────────────────────────────── -->
-    <main>
-      <div class="panel">
-        <div class="panel-header">
-          <h2 class="panel-title">📋 All Expenses</h2>
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-label">Month-End Forecast</span>
+          <div class="kpi-icon indigo">🔮</div>
         </div>
+        <div class="kpi-value indigo" id="card-forecast">Calculating…</div>
+        <div class="kpi-meta" id="card-forecast-meta">Based on daily avg spend</div>
+        <div id="card-forecast-badge"></div>
+      </div>
 
-        <!-- Filters -->
-        <div class="filter-bar">
-          <label for="filter-category">Category:</label>
-          <select id="filter-category" class="form-control" aria-label="Filter by category">
-            <option value="">All Categories</option>
-            {% for category in categories %}
-            <option value="{{ category | lower }}">{{ category }}</option>
-            {% endfor %}
-          </select>
+    </section>
 
-          <label for="filter-month">Month:</label>
-          <input
-            type="month"
-            id="filter-month"
-            class="form-control"
-            aria-label="Filter by month"
-          />
+    <!-- ── CONTENT GRID ───────────────────────────────────── -->
+    <div class="content-grid">
 
-          <span class="record-count" id="record-count">0 records</span>
-        </div>
+      <!-- LEFT: Add Transaction + Alerts -->
+      <aside>
+        <div class="panel">
+          <div class="panel-header">
+            <h2 class="panel-title">
+              <span class="panel-title-dot"></span>
+              Log Transaction
+            </h2>
+          </div>
+          <div class="panel-body">
+            <form id="expense-form" novalidate>
 
-        <!-- Table -->
-        <div class="table-wrapper">
-          <table class="expense-table" aria-label="Expense list">
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Amount</th>
-                <th>Category</th>
-                <th>Date</th>
-                <th>Added</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="expense-tbody">
-              <!-- Rows injected by script.js -->
-              <tr class="loading-row">
-                <td colspan="6">
-                  <span class="spinner"></span>&nbsp;&nbsp;Loading expenses...
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-      </div><!-- /panel -->
-
-      <!-- ── Monthly Summary ──────────────────────────────────── -->
-      <div class="panel summary-section">
-        <div class="panel-header">
-          <h3 class="panel-title">📊 Monthly Summary</h3>
-        </div>
-        <div class="panel-body">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px;">
-
-            <!-- Category breakdown bars -->
-            <div>
-              <h4 style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;">By Category</h4>
-              <div id="category-bars">
-                <p style="color:var(--text-muted);font-size:.85rem;">Loading…</p>
+              <div class="form-group">
+                <label for="expense-title">Description</label>
+                <input type="text" id="expense-title" class="form-control"
+                       placeholder="e.g. Groceries at Dmart" required maxlength="100" />
               </div>
-            </div>
 
-            <!-- Monthly totals list -->
-            <div>
-              <h4 style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;">By Month</h4>
-              <div id="monthly-list">
-                <p style="color:var(--text-muted);font-size:.85rem;">Loading…</p>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="expense-amount">Amount (₹)</label>
+                  <input type="number" id="expense-amount" class="form-control"
+                         placeholder="0.00" step="0.01" min="0.01" required />
+                </div>
+                <div class="form-group">
+                  <label for="expense-date">Date</label>
+                  <input type="date" id="expense-date" class="form-control" required />
+                </div>
               </div>
-            </div>
 
+              <div class="form-group">
+                <label for="expense-category">Category</label>
+                <select id="expense-category" class="form-control" required>
+                  {% for category in categories %}
+                  <option value="{{ category }}">{{ category }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="expense-notes">Notes <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+                <input type="text" id="expense-notes" class="form-control"
+                       placeholder="Any additional details..." maxlength="200" />
+              </div>
+
+              <button type="submit" class="btn btn-primary" id="submit-btn">
+                ＋ Log Transaction
+              </button>
+
+            </form>
           </div>
         </div>
-      </div><!-- /summary panel -->
 
-    </main><!-- /right main -->
-  </div><!-- /main-grid -->
+        <!-- Smart Alerts -->
+        <div class="panel" style="margin-top:20px;">
+          <div class="panel-header">
+            <h3 class="panel-title">
+              <span class="panel-title-dot"></span>
+              Smart Alerts
+            </h3>
+          </div>
+          <div class="panel-body">
+            <div id="alerts-container">
+              <p style="color:var(--text-muted);font-size:.82rem;">Analyzing spend patterns…</p>
+            </div>
+          </div>
+        </div>
+      </aside>
 
-</div><!-- /app-wrapper -->
+      <!-- RIGHT: Transactions Table + Analytics -->
+      <main>
+        <div class="panel">
+          <div class="panel-header">
+            <h2 class="panel-title">
+              <span class="panel-title-dot"></span>
+              Transaction Ledger
+            </h2>
+          </div>
 
-<!-- ──────────────────────────────────────────────────────────
-     DELETE CONFIRMATION MODAL
-────────────────────────────────────────────────────────────── -->
+          <div class="filter-bar">
+            <label for="filter-category">Category:</label>
+            <select id="filter-category" class="form-control" aria-label="Filter by category">
+              <option value="">All Categories</option>
+              {% for category in categories %}
+              <option value="{{ category | lower }}">{{ category }}</option>
+              {% endfor %}
+            </select>
+
+            <label for="filter-month">Period:</label>
+            <input type="month" id="filter-month" class="form-control" aria-label="Filter by month" />
+
+            <span class="record-count" id="record-count">0 records</span>
+          </div>
+
+          <div class="table-wrapper">
+            <table class="expense-table" aria-label="Transaction list">
+              <thead>
+                <tr>
+                  <th>Description</th>
+                  <th>Amount</th>
+                  <th>Category</th>
+                  <th>Date</th>
+                  <th>Logged</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="expense-tbody">
+                <tr class="loading-row">
+                  <td colspan="6">
+                    <span class="spinner"></span>&nbsp;&nbsp;Loading transactions...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Analytics Panel -->
+        <div class="panel summary-section">
+          <div class="panel-header">
+            <h3 class="panel-title">
+              <span class="panel-title-dot"></span>
+              Spending Analytics
+            </h3>
+          </div>
+          <div class="panel-body">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px;">
+
+              <div>
+                <h4 style="font-size:.72rem;color:var(--text-secondary);margin-bottom:14px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;">By Category</h4>
+                <div id="category-bars">
+                  <p style="color:var(--text-muted);font-size:.85rem;">Loading…</p>
+                </div>
+              </div>
+
+              <div>
+                <h4 style="font-size:.72rem;color:var(--text-secondary);margin-bottom:14px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;">Monthly Breakdown</h4>
+                <div id="monthly-list">
+                  <p style="color:var(--text-muted);font-size:.85rem;">Loading…</p>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- Forecasting Panel -->
+        <div class="panel summary-section" id="forecast-panel">
+          <div class="panel-header">
+            <h3 class="panel-title">
+              <span class="panel-title-dot" style="background:var(--indigo);"></span>
+              📈 Spending Forecast
+            </h3>
+            <span class="forecast-confidence-badge" id="forecast-confidence-badge"></span>
+          </div>
+          <div class="panel-body">
+            <div class="forecast-grid" id="forecast-detail">
+              <p style="color:var(--text-muted);font-size:.85rem;">Loading forecast…</p>
+            </div>
+          </div>
+        </div>
+      </main>
+
+    </div><!-- /content-grid -->
+  </div><!-- /page-body -->
+</div><!-- /main-content -->
+
+<!-- Delete Confirmation Modal -->
 <div class="modal-overlay" id="delete-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
   <div class="modal">
-    <div class="modal-title" id="modal-title">🗑️ Delete Expense</div>
-    <p class="modal-text">Are you sure you want to delete this expense? This action cannot be undone.</p>
+    <div class="modal-title" id="modal-title">🗑️ Remove Transaction</div>
+    <p class="modal-text">This transaction will be permanently removed from your records. This action cannot be undone.</p>
     <div class="modal-actions">
       <button class="btn btn-cancel" id="delete-cancel-btn">Cancel</button>
-      <button class="btn btn-delete" id="delete-confirm-btn">Yes, Delete</button>
+      <button class="btn btn-delete" id="delete-confirm-btn">Yes, Remove</button>
     </div>
   </div>
 </div>
 
-<!-- ── Toast Notification Container ────────────────────────── -->
 <div id="toast-container" aria-live="polite"></div>
 
-<!-- JavaScript -->
 <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
