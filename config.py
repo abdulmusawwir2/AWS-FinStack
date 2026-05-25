@@ -37,6 +37,12 @@ class Config:
 
     # ─── DynamoDB Settings ─────────────────────────────────────────
     DYNAMODB_TABLE_NAME = os.getenv("DYNAMODB_TABLE_NAME", "ExpenseTracker")
+    BUDGET_TABLE_NAME   = os.getenv("BUDGET_TABLE_NAME", "ExpenseTrackerBudgets")
+
+    # ─── AWS SNS Settings ──────────────────────────────────────────
+    # Create an SNS Topic in AWS Console → copy its ARN here.
+    # Subscribe your email to the topic to receive alerts.
+    SNS_TOPIC_ARN = os.getenv("SNS_TOPIC_ARN", "")
 
     # ─── Login Credentials ─────────────────────────────────────────
     LOGIN_USERNAME = os.getenv("LOGIN_USERNAME", "admin")

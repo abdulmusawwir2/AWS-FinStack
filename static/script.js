@@ -43,6 +43,7 @@ const expenseForm      = document.getElementById('expense-form');
 const expenseTbody     = document.getElementById('expense-tbody');
 const filterCategory   = document.getElementById('filter-category');
 const filterMonth      = document.getElementById('filter-month');
+const filterSearch     = document.getElementById('filter-search');   // keyword search
 const recordCount      = document.getElementById('record-count');
 const deleteModal      = document.getElementById('delete-modal');
 const deleteConfirmBtn = document.getElementById('delete-confirm-btn');
@@ -106,6 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Filter listeners
   filterCategory.addEventListener('change', applyFilters);
   filterMonth.addEventListener('change', applyFilters);
+  if (filterSearch) filterSearch.addEventListener('input', applyFilters);
 
   // Modal buttons
   deleteConfirmBtn.addEventListener('click', confirmDelete);
@@ -245,13 +247,18 @@ async function loadForecast() {
  * Apply category and month filters then re-render the table.
  */
 function applyFilters() {
-  const cat   = filterCategory.value.toLowerCase();
-  const month = filterMonth.value;  // "YYYY-MM" or ""
+  const cat    = filterCategory.value.toLowerCase();
+  const month  = filterMonth.value;  // "YYYY-MM" or ""
+  const search = filterSearch ? filterSearch.value.trim().toLowerCase() : '';
 
   filteredExpenses = allExpenses.filter(e => {
-    const matchCat   = !cat   || e.category.toLowerCase() === cat;
-    const matchMonth = !month || (e.date || '').startsWith(month);
-    return matchCat && matchMonth;
+    const matchCat    = !cat    || e.category.toLowerCase() === cat;
+    const matchMonth  = !month  || (e.date || '').startsWith(month);
+    const matchSearch = !search
+      || (e.title    || '').toLowerCase().includes(search)
+      || (e.notes    || '').toLowerCase().includes(search)
+      || (e.category || '').toLowerCase().includes(search);
+    return matchCat && matchMonth && matchSearch;
   });
 
   renderTable(filteredExpenses);

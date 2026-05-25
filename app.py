@@ -28,6 +28,10 @@ from flask import Flask, request, jsonify, render_template, session, redirect, u
 from config import Config
 from services import expense_service, notification_service
 from services import user_service
+from services.db_service import BudgetDynamoDBService
+
+# Shared budget DB service instance
+budget_db = BudgetDynamoDBService()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LOGGING SETUP
@@ -221,6 +225,16 @@ def get_expenses():
         if month_filter:
             expenses = [e for e in expenses if e.get("date", "").startswith(month_filter)]
 
+        # Optional: keyword search on title and notes
+        search_query = request.args.get("search", "").strip().lower()
+        if search_query:
+            expenses = [
+                e for e in expenses
+                if search_query in e.get("title", "").lower()
+                or search_query in e.get("notes", "").lower()
+                or search_query in e.get("category", "").lower()
+            ]
+
         logger.info(f"Returning {len(expenses)} expenses for user: {user_id}")
         return success_response(expenses, f"Found {len(expenses)} expense(s).")
 
@@ -329,8 +343,15 @@ def get_summary():
     try:
         user_id = current_user()
         summary = expense_service.get_summary(user_id=user_id)
-        alerts = notification_service.check_budget_alerts(summary)
-        trend = notification_service.get_spending_trend(summary.get("monthly", {}))
+        alerts  = notification_service.check_budget_alerts(summary)
+        trend   = notification_service.get_spending_trend(summary.get("monthly", {}))
+
+        # ── Fire SNS email if any category is over/near budget ──
+        if alerts:
+            sent = notification_service.send_budget_alert_email(alerts, username=user_id)
+            if sent:
+                logger.info(f"Budget alert email sent via SNS for user: {user_id}")
+
         full_summary = {**summary, "alerts": alerts, "trend": trend}
         return success_response(full_summary, "Summary calculated successfully.")
 
@@ -348,8 +369,20 @@ def get_summary():
 def get_forecast():
     """Project end-of-month spending for the current user."""
     try:
-        user_id = current_user()
+        user_id  = current_user()
         forecast = expense_service.get_forecast(user_id=user_id)
+
+        # ── Fire SNS email if projected spend exceeds user's budget ──
+        budget = budget_db.get_budget(user_id)
+        if budget > 0 and forecast.get("forecast_month_end", 0) > budget:
+            sent = notification_service.send_overspend_email(
+                username=user_id,
+                forecast=forecast["forecast_month_end"],
+                budget=budget,
+            )
+            if sent:
+                logger.info(f"Overspend forecast email sent via SNS for user: {user_id}")
+
         return success_response(forecast, "Forecast calculated successfully.")
     except Exception as e:
         logger.error(f"Error in get_forecast: {e}")
@@ -365,14 +398,14 @@ def get_forecast():
 @app.route("/api/budget", methods=["GET", "POST"])
 @login_required
 def manage_budget():
-    """Get or set the user's monthly spending budget."""
-    session_key = f"budget_{current_user()}"
+    """Get or set the user's monthly spending budget (persisted in DynamoDB)."""
+    username = current_user()
 
     if request.method == "GET":
-        budget = session.get(session_key, 0.0)
-        return success_response({"monthly_budget": float(budget)}, "Budget retrieved.")
+        budget = budget_db.get_budget(username)
+        return success_response({"monthly_budget": budget}, "Budget retrieved.")
 
-    # POST — save new budget
+    # POST — save new budget to DynamoDB
     try:
         data = request.get_json()
         if not data or "monthly_budget" not in data:
@@ -380,9 +413,15 @@ def manage_budget():
         value = float(data["monthly_budget"])
         if value < 0:
             return error_response("Budget cannot be negative.", 400)
-        session[session_key] = value
-        session.modified = True
-        logger.info(f"Budget set to {value:.2f} for user: {current_user()}")
+
+        saved = budget_db.set_budget(username, value)
+        if not saved:
+            # Fall back to session if DynamoDB table doesn't exist yet
+            logger.warning("Budget table unavailable — falling back to session storage.")
+            session[f"budget_{username}"] = value
+            session.modified = True
+
+        logger.info(f"Budget set to {value:.2f} for user: {username}")
         return success_response({"monthly_budget": value}, "Budget saved successfully.")
     except (ValueError, TypeError):
         return error_response("Budget must be a valid number.", 400)

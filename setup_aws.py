@@ -73,6 +73,49 @@ def create_users_table():
         return False
 
 
+def create_budgets_table():
+    """
+    Create the ExpenseTrackerBudgets DynamoDB table.
+    Stores one budget record per user, keyed by username.
+
+    Table Schema:
+        - Partition Key: username (String)
+        - Attributes: monthly_budget (Decimal), updated_at (String)
+    """
+    table_name = Config.BUDGET_TABLE_NAME
+    print(f"\n[...] Setting up Budgets table '{table_name}'...")
+    try:
+        dynamodb = boto3.client(
+            "dynamodb",
+            region_name=Config.AWS_REGION,
+            aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY,
+        )
+        existing_tables = dynamodb.list_tables()["TableNames"]
+        if table_name in existing_tables:
+            print(f"[OK] Budgets table '{table_name}' already exists!")
+            return True
+
+        dynamodb.create_table(
+            TableName=table_name,
+            KeySchema=[{"AttributeName": "username", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "username", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+            Tags=[{"Key": "Project", "Value": "ExpenseTracker"}],
+        )
+        waiter = dynamodb.get_waiter("table_exists")
+        waiter.wait(TableName=table_name, WaiterConfig={"Delay": 5, "MaxAttempts": 20})
+        print(f"[OK] Budgets table '{table_name}' is now ACTIVE!")
+        return True
+    except ClientError as e:
+        error_code = e.response["Error"]["Code"]
+        if error_code == "ResourceInUseException":
+            print(f"[OK] Budgets table already exists (concurrent creation).")
+            return True
+        print(f"[ERROR] Error creating budgets table: {e.response['Error']['Message']}")
+        return False
+
+
 def create_dynamodb_table():
     """
     Create the ExpenseTracker DynamoDB table with the correct schema.
@@ -239,6 +282,10 @@ if __name__ == "__main__":
     # Create the users table
     if success:
         success = create_users_table()
+
+    # Create the budgets table (new)
+    if success:
+        success = create_budgets_table()
 
     # Exit with appropriate code
     sys.exit(0 if success else 1)

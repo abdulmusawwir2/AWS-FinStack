@@ -225,3 +225,97 @@ class DynamoDBService:
             else:
                 logger.error(f"check_table_exists failed: {e}")
             return False
+
+
+class BudgetDynamoDBService:
+    """
+    Service class for persisting per-user monthly budgets in DynamoDB.
+
+    Table schema:
+        Partition Key: username (String)
+        Attributes:
+            - username (str)
+            - monthly_budget (Decimal)
+            - updated_at (str)
+    """
+
+    def __init__(self):
+        try:
+            dynamodb = boto3.resource(
+                "dynamodb",
+                region_name=Config.AWS_REGION,
+                aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY,
+            )
+            self.table = dynamodb.Table(Config.BUDGET_TABLE_NAME)
+            logger.info(f"BudgetDB connected → table: {Config.BUDGET_TABLE_NAME}")
+        except NoCredentialsError:
+            logger.error("AWS credentials not found for BudgetDynamoDBService.")
+            raise
+
+    def get_budget(self, username: str) -> float:
+        """
+        Retrieve the stored monthly budget for a user.
+
+        Args:
+            username (str): The user's login name.
+
+        Returns:
+            float: The stored budget amount, or 0.0 if not set.
+        """
+        try:
+            response = self.table.get_item(Key={"username": username})
+            item = response.get("Item")
+            if item:
+                logger.info(f"Budget retrieved for user: {username}")
+                return float(item.get("monthly_budget", 0.0))
+            logger.info(f"No budget found for user: {username}, returning 0.0")
+            return 0.0
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            if error_code == "ResourceNotFoundException":
+                logger.warning(
+                    f"Budget table '{Config.BUDGET_TABLE_NAME}' not found. "
+                    "Run setup_aws.py to create it."
+                )
+                return 0.0
+            logger.error(f"get_budget failed: {e.response['Error']['Message']}")
+            return 0.0
+        except Exception as e:
+            logger.error(f"get_budget unexpected error: {e}")
+            return 0.0
+
+    def set_budget(self, username: str, monthly_budget: float) -> bool:
+        """
+        Persist the monthly budget for a user in DynamoDB.
+
+        Args:
+            username (str): The user's login name.
+            monthly_budget (float): The budget amount to store.
+
+        Returns:
+            bool: True if saved successfully, False otherwise.
+        """
+        from decimal import Decimal
+        from datetime import datetime
+        try:
+            self.table.put_item(Item={
+                "username":       username,
+                "monthly_budget": Decimal(str(monthly_budget)),
+                "updated_at":     datetime.utcnow().isoformat(),
+            })
+            logger.info(f"Budget saved for user: {username} → {monthly_budget:.2f}")
+            return True
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            if error_code == "ResourceNotFoundException":
+                logger.warning(
+                    f"Budget table '{Config.BUDGET_TABLE_NAME}' not found. "
+                    "Run setup_aws.py to create it."
+                )
+                return False
+            logger.error(f"set_budget failed: {e.response['Error']['Message']}")
+            return False
+        except Exception as e:
+            logger.error(f"set_budget unexpected error: {e}")
+            return False

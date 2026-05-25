@@ -1,7 +1,63 @@
-# Expense Tracker — Full-Stack Flask + AWS DynamoDB
+# AWS FinStack — Smart Expense Tracker
 
-> A clean, modern, single-page expense tracking dashboard built with
-> **Python Flask**, **Vanilla JavaScript**, and **AWS DynamoDB**.
+> A full-stack cloud-native expense tracking dashboard built with
+> **Python Flask**, **Vanilla JavaScript**, **AWS DynamoDB**, and **AWS SNS**.
+> Designed as a final-year project combining full-stack development, cloud computing, analytics, and real-time dashboarding.
+
+---
+
+## ✨ Features
+
+### 👤 User Authentication
+- User registration & login with bcrypt password hashing
+- Session-based secure access (`login_required` decorator)
+- Per-user data isolation in DynamoDB
+
+### 📊 Dashboard Overview
+- Total spending summary (all-time)
+- Monthly expenditure tracking
+- Spending trend — up / down / stable vs. previous month
+- Month-end spending forecast (daily burn rate projection)
+
+### 💳 Transaction Management
+- Add, edit, delete transactions
+- View full transaction history
+- Notes support on every transaction
+
+### 🗂️ Category-Based Expense Tracking
+12 built-in categories:
+`Food & Dining` · `Transportation` · `Shopping` · `Entertainment` · `Health & Medical` · `Housing & Rent` · `Utilities` · `Education` · `Travel` · `Personal Care` · `Subscriptions` · `Other`
+
+### 🎯 Budget Management
+- Set a monthly budget per user
+- Budget **persisted in DynamoDB** (survives logout & server restarts)
+- Budget utilization progress bar (safe / warning / danger)
+- Compare spending vs. budget in real time
+
+### 📈 Spending Analytics
+- Category-wise spending breakdown with progress bars
+- Monthly breakdown list (last 6 months)
+- Predictive month-end forecast with confidence level (low / medium / high)
+- Spending trend analysis (month-over-month %)
+
+### 🔔 Smart Alerts & Email Notifications (AWS SNS)
+- In-app budget limit alerts (80% warning + 100% danger)
+- **Real email alerts via AWS SNS** when categories exceed 80% or go over budget
+- **Forecast overspend email** when projected month-end spend exceeds budget
+- Emails sent to all subscribers of your configured SNS topic
+
+### 🔍 Search & Filter Transactions
+- **Keyword search** — live filter by title, notes, or category
+- Filter by category (dropdown)
+- Filter by month (date picker)
+- All filters work simultaneously
+
+### ☁️ Cloud Integration
+- **AWS DynamoDB** — three tables: expenses, users, budgets
+- **AWS SNS** — real email notifications
+- **AWS EC2** — production deployment with Gunicorn + Nginx
+- **AWS IAM** — least-privilege credential management
+- **GitHub Actions CI/CD** — auto-deploy on push to `main`
 
 ---
 
@@ -12,22 +68,27 @@ expense-tracker/
 ├── app.py                        ← Flask routes & entry point
 ├── config.py                     ← All configuration & env vars
 ├── requirements.txt              ← Python dependencies
-├── setup_aws.py                  ← Creates DynamoDB table
+├── setup_aws.py                  ← Creates all 3 DynamoDB tables
 ├── .env                          ← AWS credentials (NEVER commit!)
 ├── services/
 │   ├── __init__.py
-│   ├── db_service.py             ← DynamoDB CRUD (boto3)
-│   ├── expense_service.py        ← Business logic & validation
-│   └── notification_service.py  ← Budget alerts & trends
+│   ├── db_service.py             ← DynamoDB CRUD + BudgetDynamoDBService
+│   ├── expense_service.py        ← Business logic, forecasting, analytics
+│   ├── notification_service.py  ← Budget alerts + AWS SNS email notifications
+│   └── user_service.py          ← Registration, login, bcrypt hashing
 ├── static/
 │   ├── style.css                 ← Dark-theme CSS
-│   └── script.js                 ← Vanilla JS frontend
+│   └── script.js                 ← Vanilla JS frontend (search, filters, charts)
 ├── templates/
-│   └── index.html                ← Single-page dashboard
+│   ├── index.html                ← Main dashboard (single-page)
+│   └── login.html                ← Login / signup page
 ├── systemd/
-│   └── expense-tracker.service  ← systemd unit (EC2)
-└── nginx/
-    └── expense-tracker.conf     ← Nginx reverse proxy (EC2)
+│   └── expense-tracker.service  ← systemd unit (EC2 production)
+├── nginx/
+│   └── expense-tracker.conf     ← Nginx reverse proxy config
+└── .github/
+    └── workflows/
+        └── deploy.yml           ← CI/CD auto-deploy pipeline
 ```
 
 ---
@@ -36,7 +97,7 @@ expense-tracker/
 
 ### 1. Clone or navigate to the project
 ```bash
-cd expense-tracker
+cd "expense-tracker"
 ```
 
 ### 2. Create & activate a virtual environment
@@ -55,21 +116,40 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. Configure AWS credentials
-Edit the `.env` file:
+### 4. Configure environment variables
+Edit the `.env` file with your values:
 ```env
-AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
-AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-AWS_REGION=us-east-1
+# AWS Credentials
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_REGION=ap-south-1
+
+# DynamoDB Table Names
 DYNAMODB_TABLE_NAME=ExpenseTracker
+BUDGET_TABLE_NAME=ExpenseTrackerBudgets
+
+# AWS SNS (optional — for email alerts)
+# 1. Create an SNS Topic in the AWS Console (Standard type)
+# 2. Subscribe your email to it and confirm
+# 3. Paste the Topic ARN below
+SNS_TOPIC_ARN=arn:aws:sns:ap-south-1:123456789012:ExpenseTrackerAlerts
+
+# Flask Settings
+FLASK_ENV=development
 FLASK_DEBUG=True
-FLASK_SECRET_KEY=my-super-secret-key
+FLASK_SECRET_KEY=your-secret-key
+FLASK_HOST=0.0.0.0
+FLASK_PORT=5000
 ```
 
-### 5. Create the DynamoDB table
+### 5. Create the DynamoDB tables
 ```bash
 python setup_aws.py
 ```
+This creates **3 tables** automatically:
+- `ExpenseTracker` — stores all expense records
+- `ExpenseTrackerUsers` — stores user accounts (bcrypt hashed passwords)
+- `ExpenseTrackerBudgets` — stores per-user monthly budgets (persistent)
 
 ### 6. Run the app
 ```bash
@@ -84,15 +164,23 @@ Open your browser → **http://localhost:5000**
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/` | Dashboard HTML page |
-| GET | `/api/expenses` | List all expenses |
+| GET | `/login` | Login / signup page |
+| POST | `/login` | Authenticate user |
+| POST | `/signup` | Register new user |
+| GET | `/logout` | End session |
+| GET | `/api/expenses` | List all expenses (supports filters) |
 | GET | `/api/expenses?category=Shopping` | Filter by category |
 | GET | `/api/expenses?month=2026-05` | Filter by month |
+| GET | `/api/expenses?search=coffee` | **Keyword search** (title/notes/category) |
 | GET | `/api/expenses/<id>` | Get single expense |
 | POST | `/api/expenses` | Create new expense |
 | PUT | `/api/expenses/<id>` | Update expense |
 | DELETE | `/api/expenses/<id>` | Delete expense |
-| GET | `/api/summary` | Get totals & statistics |
-| GET | `/api/health` | Health check |
+| GET | `/api/summary` | Totals, category breakdown, alerts, trend |
+| GET | `/api/forecast` | Month-end spending forecast |
+| GET | `/api/budget` | Get user's monthly budget |
+| POST | `/api/budget` | Set / update monthly budget |
+| GET | `/api/health` | Health check (DynamoDB connectivity) |
 
 ### Example — Create Expense
 ```bash
@@ -100,6 +188,43 @@ curl -X POST http://localhost:5000/api/expenses \
   -H "Content-Type: application/json" \
   -d '{"title":"Coffee","amount":4.50,"category":"Food & Dining","date":"2026-05-08"}'
 ```
+
+### Example — Keyword Search
+```bash
+curl "http://localhost:5000/api/expenses?search=zomato"
+```
+
+---
+
+## 🗃️ DynamoDB Tables
+
+### ExpenseTracker (Partition Key: `expense_id`)
+| Field | Type | Description |
+|-------|------|-------------|
+| `expense_id` | String (PK) | Auto-generated UUID4 |
+| `user_id` | String | Owner username |
+| `title` | String | Expense description |
+| `amount` | Number | Amount (₹) |
+| `category` | String | Expense category |
+| `date` | String | Date (YYYY-MM-DD) |
+| `created_at` | String | ISO timestamp |
+| `notes` | String | Optional notes |
+
+### ExpenseTrackerUsers (Partition Key: `username`)
+| Field | Type | Description |
+|-------|------|-------------|
+| `username` | String (PK) | Unique login name |
+| `password_hash` | String | bcrypt hashed password |
+| `created_at` | String | ISO timestamp |
+
+### ExpenseTrackerBudgets (Partition Key: `username`)
+| Field | Type | Description |
+|-------|------|-------------|
+| `username` | String (PK) | User's login name |
+| `monthly_budget` | Number | Budget amount (₹) |
+| `updated_at` | String | Last updated ISO timestamp |
+
+**Billing Mode:** PAY_PER_REQUEST (On-Demand) on all tables.
 
 ---
 
@@ -117,67 +242,56 @@ curl -X POST http://localhost:5000/api/expenses \
 | HTTP | TCP | 80 | 0.0.0.0/0 |
 | Custom TCP | TCP | 5000 | 0.0.0.0/0 |
 
-### Step 3 — IAM Permissions for your EC2 / IAM user
-Attach this inline policy or use `AmazonDynamoDBFullAccess` (for learning):
+### Step 3 — IAM Permissions
+Attach the following to your IAM user / EC2 role:
 ```json
 {
   "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Action": [
-      "dynamodb:CreateTable", "dynamodb:DescribeTable",
-      "dynamodb:PutItem", "dynamodb:GetItem",
-      "dynamodb:UpdateItem", "dynamodb:DeleteItem",
-      "dynamodb:Scan", "dynamodb:ListTables"
-    ],
-    "Resource": "arn:aws:dynamodb:*:*:table/ExpenseTracker"
-  }]
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:CreateTable", "dynamodb:DescribeTable", "dynamodb:ListTables",
+        "dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem", "dynamodb:Scan"
+      ],
+      "Resource": "arn:aws:dynamodb:*:*:table/ExpenseTracker*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["sns:Publish"],
+      "Resource": "arn:aws:sns:*:*:ExpenseTrackerAlerts"
+    }
+  ]
 }
 ```
 
 ### Step 4 — SSH into EC2 and set up the server
 ```bash
-# Connect to EC2
 ssh -i your-key.pem ubuntu@<EC2_PUBLIC_IP>
 
-# Update system
 sudo apt update && sudo apt upgrade -y
-
-# Install Python, pip, Nginx
 sudo apt install -y python3-pip python3-venv nginx git
 
-# Clone or upload project
 git clone https://github.com/yourname/expense-tracker.git
 cd expense-tracker
 
-# Create virtual environment
 python3 -m venv venv
 source venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
 
-# Configure environment
-cp .env .env.backup
-nano .env   # Fill in your AWS credentials
+nano .env   # Fill in your AWS credentials and SNS_TOPIC_ARN
 
-# Create DynamoDB table
-python setup_aws.py
+python setup_aws.py   # Creates all 3 DynamoDB tables
 
-# Create log directory
 sudo mkdir -p /var/log/expense-tracker
 sudo chown ubuntu:ubuntu /var/log/expense-tracker
 ```
 
 ### Step 5 — Configure Gunicorn (systemd)
 ```bash
-# Copy service file
 sudo cp systemd/expense-tracker.service /etc/systemd/system/
-
-# Edit paths if needed
-sudo nano /etc/systemd/system/expense-tracker.service
-
-# Enable and start
+sudo nano /etc/systemd/system/expense-tracker.service   # Fix paths if needed
 sudo systemctl daemon-reload
 sudo systemctl enable expense-tracker
 sudo systemctl start expense-tracker
@@ -186,20 +300,11 @@ sudo systemctl status expense-tracker
 
 ### Step 6 — Configure Nginx
 ```bash
-# Copy Nginx config
 sudo cp nginx/expense-tracker.conf /etc/nginx/sites-available/expense-tracker
-
-# Edit server_name to your EC2 IP
-sudo nano /etc/nginx/sites-available/expense-tracker
-
-# Enable site
+sudo nano /etc/nginx/sites-available/expense-tracker   # Set server_name to EC2 IP
 sudo ln -s /etc/nginx/sites-available/expense-tracker \
            /etc/nginx/sites-enabled/expense-tracker
-
-# Remove default (optional)
 sudo rm -f /etc/nginx/sites-enabled/default
-
-# Test & reload
 sudo nginx -t
 sudo systemctl reload nginx
 ```
@@ -209,38 +314,25 @@ Open your browser → **http://\<EC2_PUBLIC_IP\>**
 
 ---
 
-## 🗃️ DynamoDB Table Schema
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `expense_id` | String (PK) | Auto-generated UUID4 |
-| `title` | String | Expense title |
-| `amount` | Number | Amount in USD |
-| `category` | String | Expense category |
-| `date` | String | Date (YYYY-MM-DD) |
-| `created_at` | String | ISO timestamp |
-| `notes` | String | Optional notes |
-
-**Billing Mode:** PAY_PER_REQUEST (On-Demand) — no capacity planning needed.
-
----
-
 ## 🔧 Useful Commands
 
 ```bash
-# View app logs
+# View live app logs
 sudo journalctl -u expense-tracker -f
 
-# Restart app
+# Restart app after code changes
 sudo systemctl restart expense-tracker
 
-# Reload Nginx
+# Reload Nginx config
 sudo systemctl reload nginx
 
 # Health check
 curl http://localhost:5000/api/health
 
-# Deactivate virtualenv
+# Re-run DynamoDB setup (safe — skips existing tables)
+python setup_aws.py
+
+# Deactivate virtual environment
 deactivate
 ```
 
@@ -249,15 +341,17 @@ deactivate
 ## 🏗️ Architecture
 
 ```
-Browser (HTML + CSS + JS)
+Browser (HTML + CSS + Vanilla JS)
     ↕  HTTP / Fetch API
 Flask Routes (app.py)
     ↕  Function calls
-Expense Service (business logic)
-    ↕  Function calls
-DB Service (boto3)
-    ↕  AWS API
-DynamoDB (AWS)
+├── expense_service.py   (business logic, analytics, forecast)
+├── user_service.py      (auth, bcrypt, registration)
+├── notification_service.py  (budget alerts + AWS SNS email)
+└── db_service.py        (DynamoDB CRUD + BudgetDynamoDBService)
+    ↕  boto3 AWS SDK
+├── AWS DynamoDB         (ExpenseTracker, ExpenseTrackerUsers, ExpenseTrackerBudgets)
+└── AWS SNS              (email notifications → subscribers)
 ```
 
 ---
@@ -266,11 +360,14 @@ DynamoDB (AWS)
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | HTML5, CSS3 (custom), Vanilla JS |
-| Backend | Python 3.11+, Flask 3.0 |
-| Database | AWS DynamoDB (NoSQL) |
+| Frontend | HTML5, CSS3 (custom dark theme), Vanilla JS |
+| Backend | Python 3.11+, Flask 3.x |
+| Database | AWS DynamoDB (NoSQL, On-Demand) |
+| Notifications | AWS SNS (email alerts) |
 | AWS SDK | boto3 |
+| Auth | bcrypt (password hashing) |
 | Production Server | Gunicorn |
 | Reverse Proxy | Nginx |
 | Process Manager | systemd |
+| CI/CD | GitHub Actions |
 | Hosting | AWS EC2 (Ubuntu 22.04) |
