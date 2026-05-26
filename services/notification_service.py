@@ -109,15 +109,21 @@ def send_budget_alert_email(alerts: list, username: str = "User") -> bool:
     if not alerts:
         return False
 
-    danger_alerts  = [a for a in alerts if a["level"] == "danger"]
-    warning_alerts = [a for a in alerts if a["level"] == "warning"]
+    category_exceeded_alerts = [a for a in alerts if a["level"] == "category_exceeded"]
+    warning_alerts           = [a for a in alerts if a["level"] == "warning"]
 
-    if not danger_alerts and not warning_alerts:
+    if not category_exceeded_alerts and not warning_alerts:
         return False
 
     # Build subject line
-    if danger_alerts:
-        subject = f"🚨 Budget Alert: {len(danger_alerts)} categor{'y' if len(danger_alerts)==1 else 'ies'} OVER BUDGET"
+    # Note: "OVER BUDGET" is reserved for overall monthly budget (see send_overspend_email).
+    # Per-category overages use a softer subject.
+    if category_exceeded_alerts:
+        subject = (
+            f"🔔 Budget Alert: {len(category_exceeded_alerts)} "
+            f"categor{'y' if len(category_exceeded_alerts)==1 else 'ies'} "
+            f"exceeded its limit"
+        )
     else:
         subject = f"⚠️ Budget Warning: {len(warning_alerts)} categor{'y' if len(warning_alerts)==1 else 'ies'} near limit"
 
@@ -130,17 +136,17 @@ def send_budget_alert_email(alerts: list, username: str = "User") -> bool:
         "",
     ]
 
-    if danger_alerts:
-        lines.append("🔴 OVER BUDGET:")
-        for a in danger_alerts:
+    if category_exceeded_alerts:
+        lines.append("🟠 CATEGORY LIMIT EXCEEDED:")
+        for a in category_exceeded_alerts:
             lines.append(
                 f"  • {a['category']}: spent ₹{a['spent']:.2f} of ₹{a['budget']:.2f} "
-                f"({a['percent']:.1f}%)"
+                f"({a['percent']:.1f}%) — category limit exceeded"
             )
         lines.append("")
 
     if warning_alerts:
-        lines.append("🟡 NEAR BUDGET LIMIT:")
+        lines.append("🟡 NEAR CATEGORY LIMIT:")
         for a in warning_alerts:
             lines.append(
                 f"  • {a['category']}: spent ₹{a['spent']:.2f} of ₹{a['budget']:.2f} "
@@ -222,13 +228,13 @@ def check_budget_alerts(summary: dict) -> list[dict]:
                 "spent":    round(spent, 2),
                 "budget":   budget_limit,
                 "percent":  round(percent_used, 1),
-                "level":    "danger",
+                "level":    "category_exceeded",
                 "message":  (
-                    f"⚠️ {category}: OVER BUDGET! "
-                    f"Spent ₹{spent:.2f} of ₹{budget_limit:.2f}"
+                    f"🟠 {category}: Category limit exceeded "
+                    f"(₹{spent:.2f} / ₹{budget_limit:.2f})"
                 ),
             })
-            logger.warning(f"OVER BUDGET: {category} — ₹{spent:.2f} / ₹{budget_limit:.2f}")
+            logger.warning(f"Category limit exceeded: {category} — ₹{spent:.2f} / ₹{budget_limit:.2f}")
 
         elif percent_used >= ALERT_THRESHOLD_PERCENT:
             alerts.append({

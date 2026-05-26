@@ -746,6 +746,12 @@ function renderMonthlyList(monthly = {}) {
 
 /**
  * Render budget alerts below the summary.
+ *
+ * Level mapping:
+ *   "category_exceeded" → amber warning style (category-level overage)
+ *   "warning"           → yellow near-limit style
+ *   "danger"            → red style (reserved for overall monthly budget breach)
+ *
  * @param {Array} alerts
  */
 function renderAlerts(alerts) {
@@ -753,9 +759,12 @@ function renderAlerts(alerts) {
     alertsContainer.innerHTML = '<p style="color:var(--text-muted);font-size:.82rem;">✅ All budgets are on track.</p>';
     return;
   }
-  alertsContainer.innerHTML = alerts.map(a =>
-    `<div class="alert alert-${a.level}">${a.message}</div>`
-  ).join('');
+  alertsContainer.innerHTML = alerts.map(a => {
+    // Map category_exceeded → warning CSS class so it renders amber, not red.
+    // "OVER BUDGET" (overall monthly) would use level "danger" if ever added here.
+    const cssLevel = a.level === 'category_exceeded' ? 'warning' : a.level;
+    return `<div class="alert alert-${cssLevel}">${a.message}</div>`;
+  }).join('');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
