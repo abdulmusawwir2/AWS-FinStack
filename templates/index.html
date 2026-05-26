@@ -6,6 +6,7 @@
   <meta name="description" content="Smart Spending Analytics System — AI-powered personal finance tracking and insights." />
   <title>SSAS | Dashboard</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -278,15 +279,17 @@
 
               <div>
                 <h4 style="font-size:.72rem;color:var(--text-secondary);margin-bottom:14px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;">By Category</h4>
-                <div id="category-bars">
-                  <p style="color:var(--text-muted);font-size:.85rem;">Loading…</p>
+                <div id="category-bars" style="display:none;"></div>
+                <div style="position:relative;max-height:280px;display:flex;justify-content:center;">
+                  <canvas id="category-chart"></canvas>
                 </div>
               </div>
 
               <div>
                 <h4 style="font-size:.72rem;color:var(--text-secondary);margin-bottom:14px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;">Monthly Breakdown</h4>
-                <div id="monthly-list">
-                  <p style="color:var(--text-muted);font-size:.85rem;">Loading…</p>
+                <div id="monthly-list" style="display:none;"></div>
+                <div style="position:relative;">
+                  <canvas id="monthly-chart"></canvas>
                 </div>
               </div>
 
@@ -306,6 +309,9 @@
           <div class="panel-body">
             <div class="forecast-grid" id="forecast-detail">
               <p style="color:var(--text-muted);font-size:.85rem;">Loading forecast…</p>
+            </div>
+            <div style="position:relative;margin-top:24px;">
+              <canvas id="forecast-chart" height="140"></canvas>
             </div>
           </div>
         </div>

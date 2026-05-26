@@ -81,6 +81,11 @@ const forecastConfBadge= document.getElementById('forecast-confidence-badge');
 // Tracked budget value
 let currentBudget = 0;
 
+// Chart instances — kept globally so we can destroy before re-render
+let categoryChart = null;
+let monthlyChart  = null;
+let forecastChart = null;
+
 // ─── Initialization ───────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   // Show today's date in the topbar
@@ -171,7 +176,9 @@ async function loadSummary() {
     const s = json.data;
     renderDashboardCards(s);
     renderCategoryBars(s.by_category, s.total);
+    renderCategoryChart(s.by_category);
     renderMonthlyList(s.monthly);
+    renderMonthlyChart(s.monthly);
     renderAlerts(s.alerts || []);
     // Re-render budget bar with updated spend
     renderBudgetCard(currentBudget, s.current_month_total || 0);
@@ -234,6 +241,7 @@ async function loadForecast() {
     const f = json.data;
     renderForecastCard(f);
     renderForecastPanel(f);
+    renderForecastChart(f);
   } catch (err) {
     if (cardForecast) cardForecast.textContent = 'N/A';
   }
@@ -472,6 +480,220 @@ function renderForecastPanel(f) {
     </div>
     ${budgetRow}
   `;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHART RENDERERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Shared Chart.js defaults matching the dark theme */
+const CHART_DEFAULTS = {
+  colors: [
+    '#00d4aa','#667eea','#f59e0b','#ef4444','#06b6d4',
+    '#8b5cf6','#10b981','#f97316','#ec4899','#84cc16','#6366f1','#14b8a6',
+  ],
+  textColor: 'rgba(156,163,175,0.9)',
+  gridColor: 'rgba(255,255,255,0.06)',
+};
+
+/**
+ * Doughnut chart — spending by category.
+ * @param {object} byCategory - { "Food & Dining": 430, ... }
+ */
+function renderCategoryChart(byCategory = {}) {
+  const canvas = document.getElementById('category-chart');
+  if (!canvas) return;
+
+  const entries = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) return;
+
+  const labels = entries.map(([cat]) => cat);
+  const data   = entries.map(([, amt]) => amt);
+
+  if (categoryChart) categoryChart.destroy();
+  categoryChart = new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        backgroundColor: CHART_DEFAULTS.colors,
+        borderColor: 'transparent',
+        borderWidth: 0,
+        hoverOffset: 8,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      cutout: '62%',
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            color: CHART_DEFAULTS.textColor,
+            font: { size: 11 },
+            padding: 14,
+            boxWidth: 12,
+            boxHeight: 12,
+          },
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.label}: ₹${ctx.parsed.toFixed(2)} (${((ctx.parsed / data.reduce((a,b)=>a+b,0))*100).toFixed(1)}%)`,
+          },
+        },
+      },
+    },
+  });
+}
+
+/**
+ * Bar chart — monthly spending totals.
+ * @param {object} monthly - { "2026-05": 540, ... }
+ */
+function renderMonthlyChart(monthly = {}) {
+  const canvas = document.getElementById('monthly-chart');
+  if (!canvas) return;
+
+  // Show up to 6 months, oldest → newest (left → right)
+  const entries = Object.entries(monthly).slice(0, 6).reverse();
+  if (!entries.length) return;
+
+  const labels = entries.map(([key]) => {
+    const [yr, mo] = key.split('-');
+    return new Date(+yr, +mo - 1, 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+  });
+  const data = entries.map(([, amt]) => amt);
+
+  if (monthlyChart) monthlyChart.destroy();
+  monthlyChart = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Monthly Spend',
+        data,
+        backgroundColor: 'rgba(102,126,234,0.75)',
+        borderColor: '#667eea',
+        borderWidth: 1,
+        borderRadius: 6,
+        borderSkipped: false,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: ctx => ` ₹${ctx.parsed.y.toFixed(2)}` },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: CHART_DEFAULTS.textColor, font: { size: 11 } },
+          grid:  { display: false },
+        },
+        y: {
+          ticks: {
+            color: CHART_DEFAULTS.textColor,
+            font:  { size: 11 },
+            callback: v => '₹' + v.toLocaleString(),
+          },
+          grid: { color: CHART_DEFAULTS.gridColor },
+        },
+      },
+    },
+  });
+}
+
+/**
+ * Grouped bar chart — current spend vs projected end-of-month vs budget.
+ * @param {object} f - Forecast object from API
+ */
+function renderForecastChart(f) {
+  const canvas = document.getElementById('forecast-chart');
+  if (!canvas) return;
+
+  const current   = f.current_month_total  || 0;
+  const projected = f.forecast_month_end   || 0;
+  const label     = f.current_month_name   || 'This Month';
+
+  const datasets = [
+    {
+      label: 'Spent So Far',
+      data:  [current],
+      backgroundColor: 'rgba(0,212,170,0.80)',
+      borderColor:     '#00d4aa',
+      borderWidth: 1,
+      borderRadius: 6,
+      borderSkipped: false,
+    },
+    {
+      label: 'Projected Total',
+      data:  [projected],
+      backgroundColor: 'rgba(99,102,241,0.75)',
+      borderColor:     '#6366f1',
+      borderWidth: 1,
+      borderRadius: 6,
+      borderSkipped: false,
+    },
+  ];
+
+  if (currentBudget > 0) {
+    datasets.push({
+      label: 'Monthly Budget',
+      data:  [currentBudget],
+      backgroundColor: 'rgba(245,158,11,0.55)',
+      borderColor:     '#f59e0b',
+      borderWidth: 2,
+      borderRadius: 6,
+      borderSkipped: false,
+    });
+  }
+
+  if (forecastChart) forecastChart.destroy();
+  forecastChart = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: [label],
+      datasets,
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            color: CHART_DEFAULTS.textColor,
+            font:  { size: 11 },
+            padding: 16,
+            boxWidth: 12,
+            boxHeight: 12,
+          },
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ₹${ctx.parsed.y.toFixed(2)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: CHART_DEFAULTS.textColor },
+          grid:  { display: false },
+        },
+        y: {
+          ticks: {
+            color: CHART_DEFAULTS.textColor,
+            font:  { size: 11 },
+            callback: v => '₹' + v.toLocaleString(),
+          },
+          grid: { color: CHART_DEFAULTS.gridColor },
+        },
+      },
+    },
+  });
 }
 
 /**
